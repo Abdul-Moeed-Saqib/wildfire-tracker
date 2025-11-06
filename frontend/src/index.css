@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* small helper to ensure leaflet tiles display correctly inside Tailwind */
 html, body, #root {
   height: 100%;
 }
