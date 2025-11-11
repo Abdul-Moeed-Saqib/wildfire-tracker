@@ -54,7 +54,7 @@ export default function EventsSidebar({
       }
       return true;
     }).sort((a,b) => {
-      // sort by latest geometry date descending (newest first)
+      // sort by latest geometry date descending 
       const aG = latestGeometry(a);
       const bG = latestGeometry(b);
       const aD = aG ? new Date(aG.date).getTime() : 0;
@@ -75,9 +75,10 @@ export default function EventsSidebar({
           <button
             title="Refresh"
             onClick={() => onRefresh()}
-            className="px-2 py-1 bg-blue-600 text-white rounded text-sm"
+            disabled={loading}
+             className={`px-2 py-1 rounded text-sm ${loading ? 'bg-blue-300 text-white cursor-not-allowed opacity-70' : 'bg-blue-600 text-white'}`}
           >
-            Refresh
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
           <button title={expanded ? 'Collapse' : 'Expand'} onClick={() => setExpanded(!expanded)} className="ml-1 p-1">
             {expanded ? '◀' : '▶'}

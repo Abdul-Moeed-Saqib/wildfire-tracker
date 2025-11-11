@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Polygon } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -79,8 +79,7 @@ function centroidOfRing(ring: any[]): LatLngTuple | null {
   return [sumLat / count, sumLon / count];
 }
 
-
-export default function WildfireMap({ events, center = [20, 0], zoom = 2 }: Props) {
+export default function WildfireMap({ events, center = [20, 0], zoom = 2, mapRef, selectedEventId }: Props) {
   const mapped: MappedEvent[] = useMemo(() => {
     if (!events) return [];
     return events.map(ev => {
@@ -110,6 +109,19 @@ export default function WildfireMap({ events, center = [20, 0], zoom = 2 }: Prop
       return { ev, geoType: geo.type ?? null, pos: fallbackPos, polygon: null };
     });
   }, [events]);
+
+  useEffect(() => {
+    if (!selectedEventId || !mapRef || !mapRef.current) return;
+    const target = mapped.find(m => m.ev.id === selectedEventId);
+    if (target && target.pos && mapRef.current) {
+      try {
+        mapRef.current.flyTo(target.pos, 6, { duration: 0.8 });
+      } catch (e) {
+        // ignore if map not ready
+        console.warn('flyTo failed', e);
+      }
+    }
+  }, [selectedEventId, mapRef, mapped]);
 
   console.debug('EONET events total:', events?.length ?? 0);
   console.debug('Mapped events (with pos):', mapped.filter(m => m.pos).length);
