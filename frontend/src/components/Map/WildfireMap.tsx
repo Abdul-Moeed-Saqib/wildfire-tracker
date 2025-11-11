@@ -24,6 +24,8 @@ type Props = {
   events: EonetEvent[] | null;
   center?: LatLngTuple;
   zoom?: number;
+  mapRef?: React.MutableRefObject<L.Map | null>; // <-- new
+  selectedEventId?: string | null;
 };
 
 function latestGeometry(e: EonetEvent) {
@@ -77,6 +79,7 @@ function centroidOfRing(ring: any[]): LatLngTuple | null {
   return [sumLat / count, sumLon / count];
 }
 
+
 export default function WildfireMap({ events, center = [20, 0], zoom = 2 }: Props) {
   const mapped: MappedEvent[] = useMemo(() => {
     if (!events) return [];
@@ -114,7 +117,14 @@ export default function WildfireMap({ events, center = [20, 0], zoom = 2 }: Prop
 
   return (
     <div className="w-full h-[70vh] rounded-lg overflow-hidden shadow">
-      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
+      <MapContainer
+       center={center} 
+       zoom={zoom}
+       style={{ height: '100%', width: '100%' }}
+       whenCreated={(mapInstance) => {
+          if (mapRef) mapRef.current = mapInstance;
+        }}
+       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
