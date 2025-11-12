@@ -6,68 +6,27 @@ import type { EonetEvent } from '../types/eonet';
 import type L from 'leaflet';
 
 export default function Home() {
-  // caching: we pass limitDetailFetch to fetch geometry for more events if needed
   const { events, loading, error, refetch } = useFetchEvents({ status: 'open', limit: 50, limitDetailFetch: 10, cacheTTL: 1000 * 60 * 10 });
   
-  // UI filter state
   const [statusFilter, setStatusFilter] = useState<'open'|'closed'|'all'>('open');
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
-  // selected event id for highlight (not used to auto-open popups here)
   const [selectedEvent, setSelectedEvent] = useState<EonetEvent | null>(null);
 
-  // map ref to call flyTo
+  // calls flyto
   const mapRef = useRef<L.Map | null>(null);
 
   useEffect(() => {
-    // expose events for console debugging (temporary)
     (window as any).__WILDFIRE_EVENTS__ = events;
   }, [events]);
 
   // when a user selects an event from the sidebar
   function handleSelectEvent(ev: EonetEvent) {
-    setSelectedEvent(ev);
-    // compute position (use last geometry)
-    const g = ev.geometries && ev.geometries.length ? ev.geometries[ev.geometries.length - 1] : null;
-    if (!g) return;
-    if (g.type === 'Point' && Array.isArray(g.coordinates) && g.coordinates.length >= 2) {
-      const lon = g.coordinates[0];
-      const lat = g.coordinates[1];
-      if (mapRef.current) {
-        mapRef.current.flyTo([lat, lon], 6, { duration: 0.8 });
-      }
-    } else if ((g.type === 'Polygon' || g.type === 'MultiPolygon') && Array.isArray(g.coordinates)) {
-      // compute centroid of first ring (simple average)
-      let ring = g.coordinates;
-      if (Array.isArray(g.coordinates[0]) && Array.isArray(g.coordinates[0][0]) && Array.isArray(g.coordinates[0][0][0])) {
-        // MultiPolygon -> use first polygon
-        ring = g.coordinates[0][0];
-      } else if (Array.isArray(g.coordinates[0]) && Array.isArray(g.coordinates[0][0])) {
-        // Polygon -> first ring
-        ring = g.coordinates[0];
-      }
-      if (Array.isArray(ring) && ring.length) {
-        let sumLon = 0, sumLat = 0;
-        let cnt = 0;
-        for (const p of ring) {
-          if (Array.isArray(p) && p.length >= 2) {
-            sumLon += p[0];
-            sumLat += p[1];
-            cnt++;
-          }
-        }
-        if (cnt > 0 && mapRef.current) {
-          const centroidLat = sumLat / cnt;
-          const centroidLon = sumLon / cnt;
-          mapRef.current.flyTo([centroidLat, centroidLon], 6, { duration: 0.8 });
-        }
-      }
-    }
-  }
+  setSelectedEvent(ev);
+}
 
   function handleRefresh() {
-    // trigger refetch (force)
     refetch(true);
   }
 

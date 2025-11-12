@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import markerUrl from 'leaflet/dist/images/marker-icon.png';
@@ -16,15 +16,14 @@ L.Icon.Default.mergeOptions({
 type MappedEvent = {
   ev: EonetEvent;
   geoType: string | null;
-  pos: LatLngTuple | null;              
-  polygon?: LatLngTuple[][] | null;     
+  pos: LatLngTuple | null;
+  polygon?: LatLngTuple[][] | null;
 };
 
 type Props = {
   events: EonetEvent[] | null;
   center?: LatLngTuple;
   zoom?: number;
-  mapRef?: React.MutableRefObject<L.Map | null>; // <-- new
   selectedEventId?: string | null;
 };
 
@@ -43,9 +42,7 @@ function pointToLatLng(coords: any): LatLngTuple | null {
 
 function polygonToLatLngRings(coords: any): LatLngTuple[][] | null {
   if (!coords || !Array.isArray(coords)) return null;
-
   let rings: any[] = [];
-
   if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && Array.isArray(coords[0][0][0])) {
     rings = coords[0];
   } else if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
@@ -53,33 +50,59 @@ function polygonToLatLngRings(coords: any): LatLngTuple[][] | null {
   } else {
     return null;
   }
-
-
-  const latRings: LatLngTuple[][] = rings.map((ring: any[]) =>
-    ring.map((pt: any[]) => {
-      const [lon, lat] = pt;
-      return [lat, lon];
-    })
-  );
-
-  return latRings;
+  return rings.map((ring: any[]) => ring.map((pt: any[]) => {
+    const [lon, lat] = pt;
+    return [lat, lon];
+  }));
 }
 
-function centroidOfRing(ring: any[]): LatLngTuple | null {
-  if (!Array.isArray(ring) || ring.length === 0) return null;
-  let sumLon = 0, sumLat = 0, count = 0;
-  ring.forEach((pt: any[]) => {
-    if (Array.isArray(pt) && pt.length >= 2) {
-      sumLon += pt[0];
-      sumLat += pt[1];
-      count++;
+function MapController({ events, selectedEventId }: { events: EonetEvent[] | null; selectedEventId?: string | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    const ev = events?.find(e => e.id === selectedEventId) ?? null;
+    if (!ev) {
+      console.debug('event id not found in events:', selectedEventId);
+      return;
     }
-  });
-  if (count === 0) return null;
-  return [sumLat / count, sumLon / count];
+
+    const g = latestGeometry(ev);
+    if (!g) {
+      console.debug('selected event has no geometry:', ev.id);
+      return;
+    }
+
+    let pos: LatLngTuple | null = null;
+    if (g.type === 'Point') {
+      pos = pointToLatLng(g.coordinates);
+    } else if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+      const rings = polygonToLatLngRings(g.coordinates);
+      if (rings && rings[0]) {
+        const ring = rings[0];
+        let sumLat = 0, sumLon = 0;
+        ring.forEach(p => { sumLat += p[0]; sumLon += p[1]; });
+        pos = [sumLat / ring.length, sumLon / ring.length];
+      }
+    } else {
+      pos = pointToLatLng(g.coordinates);
+    }
+
+    console.debug('[MapController] flyTo attempt for', ev.id, 'pos:', pos);
+
+    if (pos) {
+      try {
+        map.flyTo(pos, 6, { duration: 0.8 });
+      } catch (err) {
+        console.warn('[MapController] flyTo failed', err);
+      }
+    }
+  }, [selectedEventId, events, map]);
+
+  return null;
 }
 
-export default function WildfireMap({ events, center = [20, 0], zoom = 2, mapRef, selectedEventId }: Props) {
+export default function WildfireMap({ events, center = [20, 0], zoom = 2, selectedEventId }: Props) {
   const mapped: MappedEvent[] = useMemo(() => {
     if (!events) return [];
     return events.map(ev => {
@@ -93,8 +116,6 @@ export default function WildfireMap({ events, center = [20, 0], zoom = 2, mapRef
 
       if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
         const rings = polygonToLatLngRings(geo.coordinates);
-        const pos = (rings && rings[0]) ? centroidOfRing(rings[0].map(p => [p[1], p[0]])) : null;
-    
         let centroid: LatLngTuple | null = null;
         if (rings && rings[0]) {
           const ring = rings[0];
@@ -110,49 +131,26 @@ export default function WildfireMap({ events, center = [20, 0], zoom = 2, mapRef
     });
   }, [events]);
 
-  useEffect(() => {
-    if (!selectedEventId || !mapRef || !mapRef.current) return;
-    const target = mapped.find(m => m.ev.id === selectedEventId);
-    if (target && target.pos && mapRef.current) {
-      try {
-        mapRef.current.flyTo(target.pos, 6, { duration: 0.8 });
-      } catch (e) {
-        // ignore if map not ready
-        console.warn('flyTo failed', e);
-      }
-    }
-  }, [selectedEventId, mapRef, mapped]);
-
   console.debug('EONET events total:', events?.length ?? 0);
   console.debug('Mapped events (with pos):', mapped.filter(m => m.pos).length);
-  console.debug('Mapped sample:', mapped.slice(0, 20).map(m => ({ id: m.ev.id, geoType: m.geoType, pos: m.pos != null })));
 
   return (
     <div className="w-full h-[70vh] rounded-lg overflow-hidden shadow">
-      <MapContainer
-       center={center} 
-       zoom={zoom}
-       style={{ height: '100%', width: '100%' }}
-       whenCreated={(mapInstance) => {
-          if (mapRef) mapRef.current = mapInstance;
-        }}
-       >
+      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        <MapController events={events} selectedEventId={selectedEventId} />
+
         {mapped.map(({ ev, geoType, pos, polygon }) => {
           if (!pos && !polygon) return null;
-
-          // render polygon overlay if available
           return (
             <React.Fragment key={ev.id}>
-              {polygon && polygon.length > 0 && (
-                polygon.map((ring, idx) => (
-                  <Polygon key={ev.id + '-poly-' + idx} positions={ring} pathOptions={{ color: '#ff4500', weight: 1, fillOpacity: 0.1 }} />
-                ))
-              )}
+              {polygon && polygon.length > 0 && polygon.map((ring, idx) => (
+                <Polygon key={ev.id + '-poly-' + idx} positions={ring} pathOptions={{ color: '#ff4500', weight: 1, fillOpacity: 0.1 }} />
+              ))}
 
               {pos && (
                 <>
